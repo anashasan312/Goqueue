@@ -1,0 +1,23 @@
+# Build output
+/bin/
+*.o
+*.exe
+
+# Test and coverage output
+coverage.out
+coverage.html
+
+# Local-only module overlay used when building without access to the Go module
+# proxy. Not part of the project.
+go.local.mod
+go.local.sum
+
+# Editors
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local secrets and environment overrides
+.env
+config/config.*.local.yaml

@@ -1,0 +1,81 @@
+# GoQueue — local development configuration.
+#
+# Every value here is also the built-in default, so this file documents the full
+# surface rather than overriding it. Secrets are deliberately absent: they are
+# supplied through GOQUEUE_* environment variables, which is why redis.password
+# is empty below rather than filled in with a placeholder somebody might commit.
+
+env: local
+
+server:
+  name: goqueue
+  version: 1.0.0
+  # Public port: the job API that application clients call.
+  public_port: 8080
+  # Private port: metrics, health and the operator dashboard. Keep this one off
+  # the public ingress.
+  private_port: 9090
+  read_timeout: 15s
+  write_timeout: 30s
+  shutdown_timeout: 20s
+
+logger:
+  # debug | info | warn | error
+  level: info
+
+redis:
+  addrs:
+    - 127.0.0.1:6379
+  username: ""
+  # Supplied via GOQUEUE_REDIS_PASSWORD in any real environment.
+  password: ""
+  db: 0
+  # Prefixes every key, so several deployments can share one Redis.
+  namespace: goqueue
+  pool_size: 20
+  min_idle_conns: 4
+  dial_timeout: 5s
+  read_timeout: 3s
+  write_timeout: 3s
+
+worker:
+  # Set false to run an API-only process.
+  enabled: true
+  # How many jobs run at once in this process.
+  concurrency: 10
+  # Queue weights. A queue with weight 6 is polled six times as often as one
+  # with weight 1, which is what keeps "low" from starving while "critical"
+  # still goes first.
+  queues:
+    critical: 6
+    default: 3
+    low: 1
+  # How long a worker sleeps after finding every queue empty. Lower means faster
+  # pickup and more idle Redis traffic.
+  poll_interval: 500ms
+  # How long shutdown waits for in-flight jobs before abandoning them to lease
+  # expiry. Keep this below the orchestrator's termination grace period.
+  shutdown_timeout: 30s
+  # Initial lease granted on dequeue.
+  lease_duration: 60s
+
+scheduler:
+  # Set false to run a worker-only process with no sweeps.
+  enabled: true
+  # The floor on scheduling precision: a job due now waits at most this long.
+  promote_interval: 1s
+  # How often jobs orphaned by a dead worker are returned to their queue.
+  reclaim_interval: 30s
+  # How often expired completed jobs are trimmed.
+  janitor_interval: 1m
+  # How often queue depth gauges are refreshed.
+  metrics_interval: 5s
+  # Maximum jobs moved per sweep, so a large backlog drains over several ticks.
+  batch_limit: 500
+
+job:
+  # How long a completed job stays visible on the dashboard.
+  completed_retention: 1h
+  # How long an idempotency key is held. Must exceed the longest client retry
+  # window, or a retried request will slip past deduplication.
+  idempotency_ttl: 24h

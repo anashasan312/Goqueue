@@ -1,0 +1,21 @@
+# Prometheus scrape configuration for the local GoQueue stack.
+
+global:
+  # 5s rather than the usual 15s: a demo should show a change on the Grafana
+  # dashboard within a few seconds of enqueueing a job.
+  scrape_interval: 5s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: goqueue-local
+
+scrape_configs:
+  - job_name: goqueue
+    # Metrics live on the private port, alongside health and the dashboard.
+    static_configs:
+      - targets: ["goqueue:9090"]
+        labels:
+          service: goqueue
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

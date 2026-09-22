@@ -1,0 +1,17 @@
+# Grafana datasource provisioning: point Grafana at the stack's Prometheus so
+# the dashboard works on first boot without anyone clicking through setup.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    # Fixed uid so the provisioned dashboard JSON can reference this datasource
+    # directly instead of prompting for one on import.
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 5s

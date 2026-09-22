@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GoQueue</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --surface: #171a21;
+    --surface-2: #1e222b;
+    --border: #2a2f3a;
+    --text: #e6e8ee;
+    --text-dim: #949aa8;
+    --accent: #5b8def;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --err: #f85149;
+    --info: #8b7cf6;
+    --radius: 8px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f0f2f5;
+      --border: #d8dce3; --text: #1a1d23; --text-dim: #5f6673;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 16px; border-bottom: 1px solid var(--border); background: var(--surface);
+  }
+  h1 { font-size: 17px; margin: 0; letter-spacing: -0.01em; }
+  h1 span { color: var(--accent); }
+  .grow { flex: 1 1 auto; }
+  main { padding: 16px; max-width: 1400px; margin: 0 auto; }
+  section { margin-bottom: 24px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em;
+       color: var(--text-dim); margin: 0 0 10px; font-weight: 600; }
+
+  .tiles { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+  .tile { background: var(--surface); border: 1px solid var(--border);
+          border-radius: var(--radius); padding: 12px 14px; }
+  .tile .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+                 color: var(--text-dim); margin-bottom: 4px; }
+  .tile .value { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  table { width: 100%; border-collapse: collapse; background: var(--surface);
+          border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border);
+           font-size: 13px; }
+  th { background: var(--surface-2); font-size: 11px; text-transform: uppercase;
+       letter-spacing: 0.05em; color: var(--text-dim); font-weight: 600; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--surface-2); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .mono { font-family: var(--mono); font-size: 12px; }
+
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px;
+          font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
+  .s-pending   { background: rgba(91,141,239,.15); color: var(--accent); }
+  .s-active    { background: rgba(139,124,246,.15); color: var(--info); }
+  .s-scheduled { background: rgba(148,154,168,.15); color: var(--text-dim); }
+  .s-retrying  { background: rgba(210,153,34,.15); color: var(--warn); }
+  .s-completed { background: rgba(63,185,80,.15); color: var(--ok); }
+  .s-dead      { background: rgba(248,81,73,.15); color: var(--err); }
+
+  button, select, input {
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: inherit;
+  }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger  { color: var(--err); }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .actions { display: flex; gap: 6px; }
+  .actions button { padding: 3px 8px; font-size: 12px; }
+
+  .err-msg { color: var(--err); font-size: 12px; max-width: 320px;
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .empty { padding: 28px; text-align: center; color: var(--text-dim); }
+  #toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface);
+           border: 1px solid var(--border); border-left: 3px solid var(--accent);
+           border-radius: var(--radius); padding: 10px 14px; box-shadow: 0 6px 20px rgba(0,0,0,.3);
+           opacity: 0; transform: translateY(8px); transition: .2s; pointer-events: none; }
+  #toast.show { opacity: 1; transform: translateY(0); }
+  #toast.error { border-left-color: var(--err); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+         background: var(--ok); margin-right: 6px; }
+  .dot.stale { background: var(--warn); }
+  @media (max-width: 640px) {
+    .hide-sm { display: none; }
+    main, header { padding: 12px 16px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Go<span>Queue</span></h1>
+  <div class="grow"></div>
+  <label style="font-size:12px;color:var(--text-dim)">
+    <input type="checkbox" id="auto" checked style="vertical-align:-1px"> auto-refresh
+  </label>
+  <span id="status" style="font-size:12px;color:var(--text-dim)"><span class="dot"></span>—</span>
+  <button id="refresh">Refresh</button>
+</header>
+
+<main>
+  <section>
+    <h2>Totals</h2>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section>
+    <h2>Queues</h2>
+    <table>
+      <thead><tr>
+        <th>Queue</th><th class="num">Pending</th><th class="num">Active</th>
+        <th class="num hide-sm">Scheduled</th><th class="num">Retrying</th>
+        <th class="num hide-sm">Completed</th><th class="num">Dead</th>
+        <th>State</th><th>Actions</th>
+      </tr></thead>
+      <tbody id="queues"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Jobs</h2>
+    <div class="controls">
+      <select id="f-state">
+        <option value="">All states</option>
+        <option value="pending">Pending</option>
+        <option value="active">Active</option>
+        <option value="scheduled">Scheduled</option>
+        <option value="retrying">Retrying</option>
+        <option value="completed">Completed</option>
+        <option value="dead">Dead</option>
+      </select>
+      <select id="f-queue"><option value="">All queues</option></select>
+      <input id="f-task" placeholder="task type" style="width:150px">
+      <button id="apply" class="primary">Apply</button>
+      <div class="grow"></div>
+      <button id="prev">&lsaquo; Prev</button>
+      <span id="page" class="mono" style="color:var(--text-dim)">—</span>
+      <button id="next">Next &rsaquo;</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th>ID</th><th>Task</th><th class="hide-sm">Queue</th><th>State</th>
+        <th class="num">Try</th><th class="hide-sm">Last error</th>
+        <th class="hide-sm">Created</th><th>Actions</th>
+      </tr></thead>
+      <tbody id="jobs"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var API = "/api/v1";
+  var PAGE_SIZE = 25;
+  var offset = 0;
+  var total = 0;
+  var timer = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function toast(msg, isError) {
+    var el = $("toast");
+    el.textContent = msg;
+    el.className = "show" + (isError ? " error" : "");
+    setTimeout(function () { el.className = ""; }, 3200);
+  }
+
+  function setStatus(ok, text) {
+    $("status").innerHTML = '<span class="dot' + (ok ? "" : " stale") + '"></span>' + esc(text);
+  }
+
+  function api(method, path, body) {
+    var opts = { method: method, headers: { "Content-Type": "application/json" } };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    return fetch(API + path, opts).then(function (res) {
+      if (res.status === 204) return null;
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data && data.message ? data.message : "request failed");
+        return data;
+      });
+    });
+  }
+
+  function relTime(iso) {
+    if (!iso) return "—";
+    var diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (!isFinite(diff)) return "—";
+    if (diff < 60) return Math.max(0, Math.round(diff)) + "s ago";
+    if (diff < 3600) return Math.round(diff / 60) + "m ago";
+    if (diff < 86400) return Math.round(diff / 3600) + "h ago";
+    return Math.round(diff / 86400) + "d ago";
+  }
+
+  var TILES = [
+    ["Pending", "pending"], ["Active", "active"], ["Scheduled", "scheduled"],
+    ["Retrying", "retrying"], ["Completed", "completed"], ["Dead", "dead"]
+  ];
+
+  function renderQueues(data) {
+    var t = data.totals || {};
+    $("tiles").innerHTML = TILES.map(function (pair) {
+      return '<div class="tile"><div class="label">' + pair[0] + '</div>' +
+             '<div class="value">' + (t[pair[1]] || 0) + "</div></div>";
+    }).join("");
+
+    var queues = data.queues || [];
+    if (!queues.length) {
+      $("queues").innerHTML = '<tr><td colspan="9" class="empty">No queues yet — enqueue a job to create one.</td></tr>';
+      return;
+    }
+
+    $("queues").innerHTML = queues.map(function (q) {
+      return "<tr>" +
+        "<td><strong>" + esc(q.queue) + "</strong></td>" +
+        '<td class="num">' + q.pending + "</td>" +
+        '<td class="num">' + q.active + "</td>" +
+        '<td class="num hide-sm">' + q.scheduled + "</td>" +
+        '<td class="num">' + q.retrying + "</td>" +
+        '<td class="num hide-sm">' + q.completed + "</td>" +
+        '<td class="num">' + q.dead + "</td>" +
+        '<td><span class="pill ' + (q.paused ? "s-dead" : "s-completed") + '">' +
+          (q.paused ? "paused" : "running") + "</span></td>" +
+        '<td class="actions">' +
+          '<button data-pause="' + esc(q.queue) + '" data-val="' + (q.paused ? "0" : "1") + '">' +
+            (q.paused ? "Resume" : "Pause") + "</button>" +
+          '<button data-retryall="' + esc(q.queue) + '"' + (q.dead ? "" : " disabled") +
+            ">Retry dead</button>" +
+        "</td></tr>";
+    }).join("");
+
+    var sel = $("f-queue");
+    var current = sel.value;
+    sel.innerHTML = '<option value="">All queues</option>' + queues.map(function (q) {
+      return '<option value="' + esc(q.queue) + '">' + esc(q.queue) + "</option>";
+    }).join("");
+    sel.value = current;
+  }
+
+  function renderJobs(data) {
+    total = data.total || 0;
+    var jobs = data.jobs || [];
+
+    var from = total === 0 ? 0 : offset + 1;
+    var to = offset + jobs.length;
+    $("page").textContent = from + "–" + to + " of " + total;
+    $("prev").disabled = offset === 0;
+    $("next").disabled = to >= total;
+
+    if (!jobs.length) {
+      $("jobs").innerHTML = '<tr><td colspan="8" class="empty">No jobs match this filter.</td></tr>';
+      return;
+    }
+
+    $("jobs").innerHTML = jobs.map(function (j) {
+      var canRetry = j.state === "dead";
+      var canKill = j.state !== "dead" && j.state !== "completed";
+      return "<tr>" +
+        '<td class="mono">' + esc(j.id.slice(0, 12)) + "</td>" +
+        "<td>" + esc(j.task_type) + "</td>" +
+        '<td class="hide-sm">' + esc(j.queue) + "</td>" +
+        '<td><span class="pill s-' + esc(j.state) + '">' + esc(j.state) + "</span></td>" +
+        '<td class="num">' + j.attempts_made + "</td>" +
+        '<td class="hide-sm err-msg" title="' + esc(j.last_error) + '">' +
+          esc(j.last_error || "") + "</td>" +
+        '<td class="hide-sm" style="color:var(--text-dim)">' + esc(relTime(j.created_at)) + "</td>" +
+        '<td class="actions">' +
+          '<button data-retry="' + esc(j.id) + '"' + (canRetry ? "" : " disabled") + ">Retry</button>" +
+          '<button data-kill="' + esc(j.id) + '"' + (canKill ? "" : " disabled") + ">Kill</button>" +
+          '<button class="danger" data-del="' + esc(j.id) + '">Delete</button>' +
+        "</td></tr>";
+    }).join("");
+  }
+
+  function jobsQuery() {
+    var params = ["limit=" + PAGE_SIZE, "offset=" + offset];
+    if ($("f-state").value) params.push("state=" + encodeURIComponent($("f-state").value));
+    if ($("f-queue").value) params.push("queue=" + encodeURIComponent($("f-queue").value));
+    if ($("f-task").value.trim()) params.push("task_type=" + encodeURIComponent($("f-task").value.trim()));
+    return "/jobs?" + params.join("&");
+  }
+
+  function refresh() {
+    return Promise.all([api("GET", "/queues"), api("GET", jobsQuery())])
+      .then(function (results) {
+        renderQueues(results[0]);
+        renderJobs(results[1]);
+        setStatus(true, new Date().toLocaleTimeString());
+      })
+      .catch(function (err) {
+        setStatus(false, "disconnected");
+        toast(err.message, true);
+      });
+  }
+
+  // One delegated listener for the whole page: rows are re-rendered on every
+  // refresh, so per-button listeners would leak and go stale.
+  document.addEventListener("click", function (ev) {
+    var el = ev.target.closest("button");
+    if (!el) return;
+    var d = el.dataset;
+    var action = null;
+
+    if (d.retry)        action = api("POST", "/jobs/" + d.retry + "/retry").then(function () { return "Job requeued"; });
+    else if (d.kill)    action = api("POST", "/jobs/" + d.kill + "/kill").then(function () { return "Job killed"; });
+    else if (d.del)     action = api("DELETE", "/jobs/" + d.del).then(function () { return "Job deleted"; });
+    else if (d.pause)   action = api("PATCH", "/queues/" + d.pause + "/pause", { paused: d.val === "1" })
+                                 .then(function () { return d.val === "1" ? "Queue paused" : "Queue resumed"; });
+    else if (d.retryall) action = api("POST", "/queues/" + d.retryall + "/dead/retry")
+                                  .then(function (r) { return "Requeued " + r.affected + " job(s)"; });
+    else return;
+
+    el.disabled = true;
+    action.then(function (msg) { toast(msg); return refresh(); })
+          .catch(function (err) { toast(err.message, true); el.disabled = false; });
+  });
+
+  $("refresh").addEventListener("click", refresh);
+  $("apply").addEventListener("click", function () { offset = 0; refresh(); });
+  $("f-task").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { offset = 0; refresh(); }
+  });
+  $("prev").addEventListener("click", function () {
+    offset = Math.max(0, offset - PAGE_SIZE); refresh();
+  });
+  $("next").addEventListener("click", function () {
+    if (offset + PAGE_SIZE < total) { offset += PAGE_SIZE; refresh(); }
+  });
+
+  function setAuto(on) {
+    if (timer) { clearInterval(timer); timer = null; }
+    if (on) timer = setInterval(refresh, 3000);
+  }
+  $("auto").addEventListener("change", function (e) { setAuto(e.target.checked); });
+
+  // Stop polling while the tab is hidden: a forgotten dashboard tab should not
+  // keep scraping the API all night.
+  document.addEventListener("visibilitychange", function () {
+    setAuto(!document.hidden && $("auto").checked);
+  });
+
+  refresh();
+  setAuto(true);
+})();
+</script>
+</body>
+</html>
